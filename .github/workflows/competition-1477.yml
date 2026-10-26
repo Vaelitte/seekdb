@@ -21,7 +21,7 @@ jobs:
           set -euo pipefail
           git init source
           git -C source remote add origin https://github.com/Vaelitte/seekdb.git
-          git -C source fetch --depth=1 origin 844f322895c4153f9eb22b267c6855f17071bb61
+          git -C source fetch --depth=1 origin 3156dc535b812a4b0f24c9cee4f37d3033c8e32c
           git -C source checkout --detach FETCH_HEAD
           git -C source rev-parse HEAD
       - name: Prepare this disposable Linux runner
