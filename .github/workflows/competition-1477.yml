@@ -40,6 +40,7 @@ jobs:
         working-directory: source
         run: |
           set -euo pipefail
+          unset ANDROID_NDK_HOME
           python3 build.py build seekdb --jobs=4 --local_resources=memory=10000 --copt=-g0 --cxxopt=-g0
           test -x build/bin/src/observer/seekdb
       - name: Start an isolated instance and run the regression
@@ -51,7 +52,7 @@ jobs:
           python3 .github/script/seekdb/sdb.py start --binary build/bin/src/observer/seekdb --base-dir ../runtime-1477 --port 2881 --nodaemon --parameter memory_budget=2G --parameter cpu_count=2 --parameter datafile_size=512M --parameter datafile_maxsize=2G --parameter log_disk_size=2G
           python3 .github/script/seekdb/sdb.py wait-ready --client deps/3rd/u01/obclient/bin/obclient --base-dir ../runtime-1477 --port 2881 --timeout 180
           deps/3rd/u01/obclient/bin/obclient -h127.0.0.1 -P2881 -uroot -e 'CREATE DATABASE IF NOT EXISTS test; SELECT VERSION();'
-          deps/3rd/u01/obclient/bin/mysqltest --no-defaults --host=127.0.0.1 --port=2881 --user=root --database=test --test-file=tools/deploy/mysql_test/test_suite/subquery/t/ifnull_double_not.test --result-file=tools/deploy/mysql_test/test_suite/subquery/r/mysql/ifnull_double_not.result --logdir=evidence
+          deps/3rd/u01/obclient/bin/mysqltest --no-defaults --host=127.0.0.1 --port=2881 --user=root --database=test --default-character-set=utf8mb4 --test-file=tools/deploy/mysql_test/test_suite/subquery/t/ifnull_double_not.test --result-file=tools/deploy/mysql_test/test_suite/subquery/r/mysql/ifnull_double_not.result --logdir=evidence
       - name: Check LIKE index range extraction
         working-directory: source
         run: |
