@@ -1,0 +1,74 @@
+name: Issue 1477 focused validation
+
+"on":
+  push:
+    branches: [validation/1477-linux]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: issue-1477-linux
+  cancel-in-progress: true
+
+jobs:
+  regression:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - name: Fetch the exact public fix commit
+        run: |
+          set -euo pipefail
+          git init source
+          git -C source remote add origin https://github.com/Vaelitte/seekdb.git
+          git -C source fetch --depth=1 origin 844f322895c4153f9eb22b267c6855f17071bb61
+          git -C source checkout --detach FETCH_HEAD
+          git -C source rev-parse HEAD
+      - name: Prepare this disposable Linux runner
+        run: |
+          set -euo pipefail
+          # These are unused SDKs on the fresh GitHub-hosted VM.
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h .
+          sudo apt-get update
+          sudo apt-get install -y git wget curl rpm rpm2cpio cpio make build-essential binutils m4 file libtool-bin libaio1t64
+          rustup toolchain install 1.98.1 --profile minimal --no-self-update
+      - name: Initialize official dependencies
+        working-directory: source
+        run: python3 build.py init
+      - name: Build the optimized database without debug information
+        working-directory: source
+        run: |
+          set -euo pipefail
+          python3 build.py build seekdb --jobs=4 --local_resources=memory=10000 --copt=-g0 --cxxopt=-g0
+          test -x build/bin/src/observer/seekdb
+      - name: Start an isolated instance and run the regression
+        working-directory: source
+        run: |
+          set -euo pipefail
+          ulimit -n 65536
+          mkdir -p evidence
+          python3 .github/script/seekdb/sdb.py start --binary build/bin/src/observer/seekdb --base-dir ../runtime-1477 --port 2881 --nodaemon --parameter memory_budget=2G --parameter cpu_count=2 --parameter datafile_size=512M --parameter datafile_maxsize=2G --parameter log_disk_size=2G
+          python3 .github/script/seekdb/sdb.py wait-ready --client deps/3rd/u01/obclient/bin/obclient --base-dir ../runtime-1477 --port 2881 --timeout 180
+          deps/3rd/u01/obclient/bin/obclient -h127.0.0.1 -P2881 -uroot -e 'CREATE DATABASE IF NOT EXISTS test; SELECT VERSION();'
+          deps/3rd/u01/obclient/bin/mysqltest --no-defaults --host=127.0.0.1 --port=2881 --user=root --database=test --test-file=tools/deploy/mysql_test/test_suite/subquery/t/ifnull_double_not.test --result-file=tools/deploy/mysql_test/test_suite/subquery/r/mysql/ifnull_double_not.result --logdir=evidence
+      - name: Check LIKE index range extraction
+        working-directory: source
+        run: |
+          set -euo pipefail
+          client=deps/3rd/u01/obclient/bin/obclient
+          "$client" -h127.0.0.1 -P2881 -uroot test -e "CREATE TABLE t_related (id INT PRIMARY KEY, val VARCHAR(16), KEY idx_val(val)); INSERT INTO t_related VALUES (1,'xray'),(2,'yellow'),(3,NULL),(4,'xyz');"
+          for predicate in "val LIKE 'x%'" "!(!(val LIKE 'x%'))"; do
+            "$client" -h127.0.0.1 -P2881 -uroot test -N -B -e "EXPLAIN SELECT /*+ INDEX(t_related idx_val) */ id FROM t_related WHERE $predicate" | tee evidence/plan.txt
+            grep -q 'TABLE RANGE SCAN' evidence/plan.txt
+          done
+      - name: Print relevant failure evidence and stop the instance
+        if: always()
+        working-directory: source
+        run: |
+          if test -d evidence; then
+            find evidence -maxdepth 1 -name '*.reject' -exec cat {} \;
+          fi
+          if test -f ../runtime-1477/.sdb-instance; then
+            python3 .github/script/seekdb/sdb.py stop --base-dir ../runtime-1477
+          fi
