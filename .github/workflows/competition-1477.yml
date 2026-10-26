@@ -13,7 +13,7 @@ concurrency:
 
 jobs:
   regression:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-22.04
     timeout-minutes: 120
     steps:
       - name: Fetch the exact public fix commit
@@ -31,7 +31,7 @@ jobs:
           sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /opt/hostedtoolcache/CodeQL
           df -h .
           sudo apt-get update
-          sudo apt-get install -y git wget curl rpm rpm2cpio cpio make build-essential binutils m4 file libtool-bin libaio1t64
+          sudo apt-get install -y git wget curl rpm rpm2cpio cpio make build-essential binutils m4 file libtool-bin libaio1 libncurses5
           rustup toolchain install 1.98.1 --profile minimal --no-self-update
       - name: Initialize official dependencies
         working-directory: source
